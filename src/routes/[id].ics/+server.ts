@@ -26,7 +26,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	})) as DatabaseObjectResponse;
 	const dataSource = databaseMetadata.data_sources[0];
 
-	const databaseEntries = [];
+	const databaseEntries: any[] = [];
 	let query: QueryDataSourceResponse | { has_more: true; next_cursor: undefined } = {
 		has_more: true,
 		next_cursor: undefined
@@ -44,16 +44,31 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	const filtered: {
 		id: string;
 		title: string;
+		location: string;
 		date: { start: string; end: string | null; time_zone: string | null };
 	}[] = databaseEntries.flatMap((object) => {
-		if (object.properties[config.dateProperty].date === null) {
+		const dateProp = object.properties?.[config.dateProperty]?.date;
+		if (!dateProp?.start) {
 			return [];
 		}
+
+		// Lấy thuộc tính Place (hỗ trợ dạng Select hoặc Text)
+		const placeProp = object.properties?.[config.locationProperty];
+		const location =
+			placeProp?.select?.name ??
+			placeProp?.rich_text?.[0]?.plain_text ??
+			placeProp?.rich_text?.[0]?.text?.content ??
+			'';
+
 		return [
 			{
 				id: object.id,
-				title: object.properties[config.titleProperty].title[0].text.content,
-				date: object.properties[config.dateProperty].date
+				title:
+					object.properties?.[config.titleProperty]?.title?.[0]?.plain_text ??
+					object.properties?.[config.titleProperty]?.title?.[0]?.text?.content ??
+					'Untitled',
+				date: dateProp,
+				location
 			}
 		];
 	});
@@ -62,15 +77,45 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		name: dataSource.name,
 		prodId: { company: 'Tomi Chen', language: 'EN', product: 'notion-ics' }
 	});
+
 	filtered.forEach((event) => {
-		calendar.createEvent({
-			start: new Date(event.date.start),
-			end: new Date(Date.parse(event.date.end ?? event.date.start) + 86400000), // end date is exclusive, so add 1 day
-			allDay: true,
-			summary: event.title,
-			busystatus: config.busy,
-			id: event.id
-		});
+		const hasTime = event.date.start.includes('T');
+
+		if (hasTime) {
+			// Có mốc giờ cụ thể
+			const startDate = new Date(event.date.start);
+			const endDate = event.date.end ? new Date(event.date.end) : startDate;
+
+			calendar.createEvent({
+				id: event.id,
+				summary: event.title,
+				start: startDate,
+				end: endDate,
+				location: event.location,
+				allDay: false,
+				busystatus: config.busy
+			});
+		} else {
+			// Sự kiện cả ngày (All-day)
+			const [y1, m1, d1] = event.date.start.split('-').map(Number);
+			const startDate = new Date(y1, m1 - 1, d1 + 1);
+
+			let endDate = startDate;
+			if (event.date.end) {
+				const [y2, m2, d2] = event.date.end.split('-').map(Number);
+				endDate = new Date(y2, m2 - 1, d2 + 2);
+			}
+
+			calendar.createEvent({
+				id: event.id,
+				summary: event.title,
+				start: startDate,
+				end: endDate,
+				location: event.location,
+				allDay: true,
+				busystatus: config.busy
+			});
+		}
 	});
 
 	return new Response(calendar.toString(), {
