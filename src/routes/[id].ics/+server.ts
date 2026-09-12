@@ -98,12 +98,12 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		} else {
 			// Sự kiện cả ngày (All-day)
 			const [y1, m1, d1] = event.date.start.split('-').map(Number);
-			const startDate = new Date(y1, m1 - 1, d1 + 1);
+			const startDate = new Date(y1, m1 - 1, d1);
 
 			let endDate = startDate;
 			if (event.date.end) {
 				const [y2, m2, d2] = event.date.end.split('-').map(Number);
-				endDate = new Date(y2, m2 - 1, d2 + 2);
+				endDate = new Date(y2, m2 - 1, d2 + 1);
 			}
 
 			calendar.createEvent({
